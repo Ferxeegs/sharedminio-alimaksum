@@ -26,6 +26,23 @@ services:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
 
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: sharedminio-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint: ["/bin/sh", "/scripts/init-minio.sh"]
+    networks:
+      - sharedminio
+    restart: "no"
+
   prometheus:
     image: prom/prometheus:v3.2.1
     container_name: sharedminio-prometheus
