@@ -16,7 +16,12 @@ services:
       - sharedminio
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # Image Chainguard tidak punya curl. Bash /dev/tcp memeriksa /minio/health/live.
+      test:
+        - CMD
+        - /bin/sh
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /minio/health/live HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && IFS= read -r line <&3 && case "$$line" in *"200 OK"*) exit 0;; *) exit 1;; esac'
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,7 +32,8 @@ services:
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    # quay.io/minio/mc menolak pull anonim (401). Tag -dev punya shell untuk init script.
+    image: cgr.dev/chainguard/minio-client:latest-dev
     container_name: sharedminio-minio-init
     depends_on:
       minio:
@@ -55,7 +61,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
+      - prometheus-data:/prometheusHealthcheck lama memanggil curl, yang tidak ada di image Chainguard, jadi container sempat berstatus unhealthy. Pemeriksaan sekarang memakai /minio/health/live lewat shell bawaan image.
     networks:
       - sharedminio
     restart: unless-stopped
