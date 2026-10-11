@@ -1,9 +1,32 @@
 services:
+  # Image Chainguard jalan sebagai UID 65532. Data lama dari image root tidak bisa ditulis.
+  minio-perms:
+    image: alpine:3.21
+    container_name: sharedminio-minio-perms
+    user: "0:0"
+    volumes:
+      - ${MINIO_DATA_PATH}:/data
+    networks:
+      - sharedminio
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        owner="$$(stat -c '%u' /data)"
+        if [ "$$owner" != "65532" ]; then
+          echo "Fixing /data ownership for MinIO user 65532 (was $$owner)"
+          chown -R 65532:65532 /data
+        fi
+    restart: "no"
+
   minio:
     # quay.io/minio/minio menolak pull anonim (401). Image ini tetap MinIO S3 API.
     image: cgr.dev/chainguard/minio:latest
     container_name: sharedminio-minio
     command: server /data --console-address ":9001"
+    depends_on:
+      minio-perms:
+        condition: service_completed_successfully
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -61,7 +84,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheusHealthcheck lama memanggil curl, yang tidak ada di image Chainguard, jadi container sempat berstatus unhealthy. Pemeriksaan sekarang memakai /minio/health/live lewat shell bawaan image.
+      - prometheus-data:/prometheus
     networks:
       - sharedminio
     restart: unless-stopped
